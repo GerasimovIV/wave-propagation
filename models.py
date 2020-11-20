@@ -251,7 +251,7 @@ class WaveAE(BaseWave):
 
   def forward(self, x):
     shape = x.shape
-    x = self.encoder(seq_to_cnn(x))
+    x = self.encoder(seq_to_cnn(x.unsqueeze(2)))
     x = self.decoder(x)
 
     return x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)

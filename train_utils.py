@@ -114,8 +114,17 @@ def validate(model, optimizer, loss_hist, n_validation_batches,
     X = torch.from_numpy(batch['u_vp']).float()
     X[:, :, 0, :, :] /= factor
 
+    if model.model_type == 'AE':
+      # start = time.time()
+      predictions = model(X[:, :-1, 0, :, :].to(device))
+      # t_nn += (time.time() - start) / batch_size
+    else:
+      # start = time.time()
+      predictions = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 1, :, :].unsqueeze(1).to(device))
+      # t_nn += (time.time() - start) / batch_size
+
     #predictions = model(X[:, :-1, 0, :, :].to(device))
-    predictions = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 0, :, :].unsqueeze(1).to(device))
+    # predictions = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 0, :, :].unsqueeze(1).to(device))
     loss_t = loss(predictions, X[:, 1: , 0, :, :].to(device))  
     
     val_loss += loss_t.item()
@@ -124,8 +133,8 @@ def validate(model, optimizer, loss_hist, n_validation_batches,
   loss_hist['val'].append(val_loss)
 
   
-  metrix_coeff['correlation'].append(correlation_batch(predictions, X[:, 1: , 0, :, :]))
-  metrix_coeff['RMSE'].append(RMSE_batch(predictions, X[:, 1: , 0, :, :]))
+  metrix_coeff['correlation'].append(correlation_batch(predictions.to(device), X[:, 1: , 0, :, :].to(device)).item())
+  metrix_coeff['RMSE'].append(RMSE_batch(predictions.to(device), X[:, 1: , 0, :, :].to(device)).item())
   
   plot_valid(X, predictions, batch_size)
 

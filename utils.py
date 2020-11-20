@@ -4,6 +4,8 @@ import os
 import torch.nn.functional as F
 import torch
 
+from time import gmtime, strftime
+
 import torch
 from PIL import Image
 import torchvision.transforms as transforms
@@ -222,3 +224,53 @@ def correlation_batch(x, y):
     for j in range(cost.shape[1]):
       cost[i, j] = correlation_(x[i, j], y[i, j])
   return cost.mean()
+
+
+
+def save_model(epoch, model, optimizer, loss_hist, metrix_coeff, best_names=[], KI=False, add_name=''):
+  state = {'epoch': epoch + 1, 'model_state_dict': model.state_dict(),
+             'optimizer_state_dict': optimizer.state_dict(), 'loss_hist': loss_hist, 'metrix_coeff': metrix_coeff}
+  file_name = './checkpoints/' + add_name + model.__class__.__name__ + '.pth'
+  if best_names!=[]:  
+    for i in range(len(best_names)):
+      file_name = file_name[:-4] + '_best_' + best_names[i] + file_name[-4:]
+  elif KI == True:
+    file_name = file_name[:-4] + '_KeyboardInterrupt_' + strftime("%Y-%m-%d %H:%M:%S", gmtime()) + file_name[-4:]
+  torch.save(state, file_name)
+
+  print('Parameters of the model and optimizer are saved to file --> ' + file_name)
+
+
+def model_best(loss_hist, metrix_coeff):
+# find were our model is the best
+
+  result = []
+  # print(loss_hist, metrix_coeff)
+  for k in loss_hist:
+    if loss_hist[k][-1] <= min(loss_hist[k]):
+      result.append(k)
+  
+  if abs(metrix_coeff['correlation'][-1]) >= max(map(abs, metrix_coeff['correlation'])):
+    result.append('correlation')
+
+  if metrix_coeff['RMSE'][-1] <= min(metrix_coeff['RMSE']):
+    result.append('RMSE')
+
+  return result
+
+
+
+def load_model(PATH, model, optimizer, epoch, loss_hist, metrix_coeff):
+  
+  checkpoint = torch.load(PATH)
+  
+  optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+  epoch = checkpoint['epoch']
+  loss_hist = checkpoint['loss_hist']
+  metrix_coeff = checkpoint['metrix_coeff']
+  model.load_state_dict(checkpoint['model_state_dict'])
+  return loss_hist, metrix_coeff, epoch
+  # model.eval()
+  # # - or -
+  # model.train() DON'T FORGET AFTER THAT DO IT
+
