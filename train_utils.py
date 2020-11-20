@@ -1,12 +1,13 @@
-from utils import  Simulation, get_vp, ParamsGenerator
+from utils import  Simulation, get_vp, ParamsGenerator, correlation_batch, RMSE_batch
 import numpy as np
 from plottings import plot_valid, plot_metrics
 from tqdm.notebook import tqdm 
 import torch
 import time
 import gc
+from scipy.stats import pearsonr
 
-def get_batch_AE(N_min, N_max, nx, nz, nt, batch_size=20):
+def get_batch(N_min, N_max, nx, nz, nt, batch_size=20):
   
   t_init = np.random.randint(low=0, high=1000)
   batch_sols = []
@@ -30,6 +31,8 @@ def get_batch_AE(N_min, N_max, nx, nz, nt, batch_size=20):
     dt.append(Simulator.dt)
 
   results_data['u_vp'] = np.stack((np.stack(batch_sols), np.repeat(np.expand_dims(np.stack(initial_features), axis=1), nt, axis=1)), axis=2)
+  # results_data['vp'] = np.stack(initial_features)
+  # results_data['u'] = np.stack(batch_sols)
   results_data['q'] = np.stack(q)
   results_data['exec_time'] = np.mean(exec_time)
   results_data['dd'] = np.stack(dd)
@@ -51,10 +54,10 @@ def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
   t_fd = 0.
   for _ in tqdm(range(n_batches_per_epoch)):
     if model.model_type == 'AE':
-      batch = get_batch_AE(N_min, N_max, nx, nz, nt, batch_size)
+      batch = get_batch(N_min, N_max, nx, nz, nt, batch_size)
     else:
       #raise NotImplementedError('RNN to be continued')
-      batch = get_batch_AE(N_min, N_max, nx, nz, nt, batch_size)
+      batch = get_batch(N_min, N_max, nx, nz, nt, batch_size)
     optimizer.zero_grad()
     
     factor = batch['u_vp'][:, :-1, 0, :, :].std()
@@ -67,7 +70,7 @@ def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
       t_nn += (time.time() - start) / batch_size
     else:
       start = time.time()
-      predictions = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 0, :, :].unsqueeze(1).to(device))
+      predictions = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 1, :, :].unsqueeze(1).to(device))
       t_nn += (time.time() - start) / batch_size
 
     t_fd += batch['exec_time']
@@ -94,15 +97,15 @@ def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
 
 
 def validate(model, optimizer, loss_hist, n_validation_batches, 
-            device, N_min, N_max, nx, nz, nt, loss, batch_size):
+            device, N_min, N_max, nx, nz, nt, loss, batch_size, metrix_coeff):
   val_loss=0
   model.train(False)
   for _ in tqdm(range(n_validation_batches)):
     
     if model.model_type == 'AE':
-      batch = get_batch_AE(N_min, N_max, nx, nz, nt, batch_size)
+      batch = get_batch(N_min, N_max, nx, nz, nt, batch_size)
     else:
-      batch = get_batch_AE(N_min, N_max, nx, nz, nt, batch_size)
+      batch = get_batch(N_min, N_max, nx, nz, nt, batch_size)
       #raise NotImplementedError('RNN to be continued')
     optimizer.zero_grad()
     
@@ -120,6 +123,9 @@ def validate(model, optimizer, loss_hist, n_validation_batches,
   val_loss /= n_validation_batches
   loss_hist['val'].append(val_loss)
 
+  
+  metrix_coeff['correlation'].append(correlation_batch(predictions, X[:, 1: , 0, :, :]))
+  metrix_coeff['RMSE'].append(RMSE_batch(predictions, X[:, 1: , 0, :, :]))
   
   plot_valid(X, predictions, batch_size)
 

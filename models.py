@@ -93,7 +93,7 @@ class FastConvGRUCell(ConvGRUCell, nn.Module):
     super(ConvGRUCell, self).__init__()
 
     self.zeta_nu = nn.Parameter(torch.Tensor([1., -4.]), requires_grad=True)
-    #nn.init.uniform_(self.zeta_nu, -6., -2.)
+    nn.init.uniform_(self.zeta_nu, -6., -2.)
 
     self.f = torch.sigmoid
 
@@ -338,16 +338,16 @@ class WaveGRUModel(BaseWave):
 
     initial_hid = self.data_to_h0(eq_features)
     shape = solutions.shape
-    print(shape)
+    # print(shape)
     x = self.encoder(seq_to_cnn(solutions.unsqueeze(2)))
     x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3])
-    print(x.shape)
+    # print(x.shape)
     #print(initial_hid.shape)
 
     output, _ = self.conv_gru(x, initial_hid)
     x = output[0]
     x = self.decoder(seq_to_cnn(x))
     
-    print(x.shape)
+    # print(x.shape)
     
     return x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)

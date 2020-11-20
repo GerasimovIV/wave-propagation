@@ -1,6 +1,8 @@
 from scipy.ndimage import gaussian_filter
 import numpy as np
 import os
+import torch.nn.functional as F
+import torch
 
 import torch
 from PIL import Image
@@ -193,3 +195,30 @@ class ParamsGenerator(object):
   def get_rand_a(self, ):
     #sigma = np.random.choice(np.array([10, 15, 20]))
     return 0.0053#1. / (2 * sigma**2)
+
+
+
+def RMSE_(x, y):
+  return torch.sqrt(F.mse_loss(x / x.std(), y / y.std()))
+
+def RMSE_batch(x, y):
+  cost = torch.zeros(x.shape[:2])
+  for i in range(cost.shape[0]):
+    for j in range(cost.shape[1]):
+      cost[i, j] = RMSE_(x[i, j], y[i, j])
+  return cost.mean()
+
+def correlation_(x, y):
+  x /= x.std()
+  y /= y.std()
+  vx = x - torch.mean(x, axis=(-1, -2))
+  vy = y - torch.mean(y, axis=(-1, -2))
+  cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)))
+  return cost
+
+def correlation_batch(x, y):
+  cost = torch.zeros(x.shape[:2])
+  for i in range(cost.shape[0]):
+    for j in range(cost.shape[1]):
+      cost[i, j] = correlation_(x[i, j], y[i, j])
+  return cost.mean()
