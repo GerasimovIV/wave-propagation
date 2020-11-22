@@ -1,0 +1,11 @@
+/AE/pruning_MaxPool2d_ELU_LAST_WaveAE_KeyboardInterrupt_2020-11-21 15_06_47.pth
+/AE/no_pruning_MaxPool2d_ELU_LAST_WaveAE_KeyboardInterrupt_2020-11-21 16_43_37.pth
+/AE/pruning_MaxPool2d_ReLU_LAST_WaveAE_KeyboardInterrupt_2020-11-21 17_19_02.pth
+/AE/pruning_AvgPool2d_ReLU_LAST_WaveAE_KeyboardInterrupt_2020-11-21 19_23_11.pth
+/AE/no_pruning_AvgPool2d_ELU_WaveAE_KeyboardInterrupt_2020-11-21 19_54_05.pth
+/AE/no_pruning_AvgPool2d_Softplus_LAST_WaveAE_KeyboardInterrupt_2020-11-21 20_36_31.pth
+/AE/no_pruning_MaxPool2d_Softplus_WaveAE_KeyboardInterrupt_2020-11-21 21_14_04.pth
+/AE/no_pruning_MaxPool2d_ReLU_LAST_WaveAE_KeyboardInterrupt_2020-11-21 21_29_19.pth
+/AE/no_pruning_AvgPool2d_ReLU_LAST_WaveAE_KeyboardInterrupt_2020-11-21 21_44_28.pth
+/AE/no_pruning_AvgPool2d_Tanh_LAST_WaveAE_KeyboardInterrupt_2020-11-21 22_02_23.pth
+/AE/no_pruning_MaxPool2d_Tanh_LAST_WaveAE_KeyboardInterrupt_2020-11-21 22_50_41.pth
