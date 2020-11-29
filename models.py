@@ -3,7 +3,7 @@ import torch.nn.functional as F
 #from torch.nn.parameter import Parameter
 
 from conv_gru import ConvGRU, ConvGRUCell
-
+from losses import WaveLoss, hessian_diag_u
 
 def sparseFunction(x, s, activation=torch.relu, f=torch.sigmoid):
   return torch.sign(x) * activation(torch.abs(x) - f(s))
@@ -241,7 +241,7 @@ class WaveAE(BaseWave):
     super(WaveAE, self).__init__()
     
     self.model_type = 'AE'
-
+    self.pruning = pruning
     self.encoder = Encoder(in_channels=in_channels, out_channels=bottle_neck, n_layers=n_layers,
                            kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
     
@@ -251,10 +251,15 @@ class WaveAE(BaseWave):
 
   def forward(self, x):
     shape = x.shape
-    x = self.encoder(seq_to_cnn(x.unsqueeze(2)))
-    x = self.decoder(x)
+    if len(x.shape) == 4:
+      output = x.unsqueeze(2)
+    else:
+      output = x
+    
+    output = self.encoder(seq_to_cnn(output))
+    output = self.decoder(output)
 
-    return x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
+    return output.view(shape[0], shape[1], 1, x.shape[-2], x.shape[-1]).squeeze(2)
   
   # def loss(self, X, y, device='cuda'):
   #   predictions = self.forward(X.to(device))
@@ -305,10 +310,24 @@ class WaveGRUModel(BaseWave):
                n_layers=2,
                kernel_size=3,
                pooling=nn.MaxPool2d,
-               activation=nn.Softplus, mode='fast', pruning=True):
+               activation=nn.Softplus, 
+               mode='fast', 
+               pruning=True, 
+               hidden_control=None):
     super(WaveGRUModel, self).__init__()
     
     self.model_type = 'GRU'
+    self.pruning = pruning
+
+    if hidden_control is not None:
+      assert isinstance(hidden_control, dict)
+      assert 'ord' in hidden_control.keys()
+      assert 'lam' in hidden_control.keys()
+
+      self.hidden_loss = WaveLoss(order=hidden_control['ord'], scale=hidden_control['lam'])
+
+    
+    self.hidden_control = hidden_control
 
     self.data_to_h0 = Encoder(in_channels=1, out_channels=bottle_neck, n_layers=n_layers,
                            kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
@@ -345,9 +364,41 @@ class WaveGRUModel(BaseWave):
     #print(initial_hid.shape)
 
     output, _ = self.conv_gru(x, initial_hid)
+    
+    if self.hidden_control is not None:
+      h_diff = self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
+      #h_diff = output[0][:, :-1, :, :, :] - x[:, 1:, :, :, :]
+    else:
+      h_diff = 0.
+
     x = output[0]
     x = self.decoder(seq_to_cnn(x))
     
     # print(x.shape)
-    
-    return x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
+    x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
+    return x, h_diff 
+
+
+class OneByOne(nn.Module):
+  def __init__(self, fc_dims: list = [1, 7], activation=nn.Sigmoid, lam=1e-2):
+    super(OneByOne, self).__init__()
+    self.model_type = 'OBO'
+    self.activation = activation
+    self.lam = lam
+    assert len(fc_dims) > 2, 'Idiot'
+
+    self.FCs = nn.Sequential()
+    for i in range(len(fc_dims) - 1):
+      self.FCs.add_module('fc_' + str(i + 1), nn.Linear(fc_dims[i], fc_dims[i + 1]))
+      self.FCs.add_module(self.activation.__name__ + '_' + str(i + 1), self.activation())
+
+  def forward(self, X):
+    P = self.FCs(X)
+    residual = hessian_diag_u(X, self.FCs)
+    residual = self.lam * abs((residual[:, 0] + residual[:, 1])*X[:, 3]**2 + X[:, -3]*X[:, -1]**2/X[:, -2]**2 - residual[:, 2])
+    return P, residual
+
+
+
+
+

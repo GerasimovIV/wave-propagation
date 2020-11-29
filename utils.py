@@ -60,7 +60,7 @@ class Simulation(object):
   def fd_ac(self):
     srci = int(self.srcx / self.dd) # find where source is located on the grid
     srcj = int(self.srcz / self.dd)
-    
+
     self.srci = srci
     self.srcj = srcj
     
@@ -153,7 +153,7 @@ class ParamsGenerator(object):
   def _generate(self):
     self.N_lam = np.random.uniform(low=self.N_min, high=self.N_max)
 
-    self.f0 = np.random.uniform(low=6., high=100.)
+    self.f0 = np.random.uniform(low=6., high=256.)
     
     f_max = self.f0 * 2.5
 
@@ -210,6 +210,12 @@ def RMSE_batch(x, y):
       cost[i, j] = RMSE_(x[i, j], y[i, j])
   return cost.mean()
 
+def RMSE_batch_obo(x, y):
+  cost = torch.zeros(x.shape[0])
+  for i in range(cost.shape[0]):
+    cost[i] = RMSE_(x[i, :], y[i, :])
+  return cost.mean()
+
 def correlation_(x, y):
   x /= x.std()
   y /= y.std()
@@ -223,6 +229,21 @@ def correlation_batch(x, y):
   for i in range(cost.shape[0]):
     for j in range(cost.shape[1]):
       cost[i, j] = correlation_(x[i, j], y[i, j])
+  return cost.mean()
+
+def correlation_obo(x, y):
+  x /= x.std()
+  y /= y.std()
+  vx = x - torch.mean(x)
+  vy = y - torch.mean(y)
+  cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)))
+  return cost
+
+
+def correlation_batch_obo(x, y):
+  cost = torch.zeros(x.shape[0])
+  for i in range(cost.shape[0]):
+    cost[i] = correlation_obo(x[i], y[i])
   return cost.mean()
 
 
@@ -260,7 +281,7 @@ def model_best(loss_hist, metrix_coeff):
 
 
 
-def load_model(PATH, model, optimizer, epoch, loss_hist, metrix_coeff):
+def load_model(PATH, model, optimizer, loss_hist, metrix_coeff):
   
   checkpoint = torch.load(PATH)
   
@@ -268,9 +289,30 @@ def load_model(PATH, model, optimizer, epoch, loss_hist, metrix_coeff):
   epoch = checkpoint['epoch']
   loss_hist = checkpoint['loss_hist']
   metrix_coeff = checkpoint['metrix_coeff']
+  # model_state_dict = {}
+  # for key in checkpoint['model_state_dict']:
+  #   try:
+  #       model_state_dict[key] = checkpoint['model_state_dict'][key]
+  #       print(key)
+  #   except KeyError:
+  #       print('Warning=====================================\nThere is no parameter with key: '
+  #             +str(key)+'\nMaybe this is old model\n============================================')
+  # model.load_state_dict(model_state_dict)
   model.load_state_dict(checkpoint['model_state_dict'])
+  
   return loss_hist, metrix_coeff, epoch
   # model.eval()
   # # - or -
   # model.train() DON'T FORGET AFTER THAT DO IT
+
+
+def load_metrics(PATH):
+  
+  checkpoint = torch.load(PATH)
+  
+  epoch = checkpoint['epoch']
+  loss_hist = checkpoint['loss_hist']
+  metrix_coeff = checkpoint['metrix_coeff']
+
+  return loss_hist, metrix_coeff, epoch
 
