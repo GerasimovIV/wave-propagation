@@ -115,8 +115,8 @@ def get_vp(imsize, path_img='./images_vp/'):
   img_tensor -= img_tensor.min()
   img_tensor = img_tensor / img_tensor.max()
 
-  low = np.random.randint(low=5, high=40)
-  high = np.random.randint(low=low + 10, high=100)
+  low = np.random.randint(low=10, high=40)
+  high = np.random.randint(low=low + 20, high=100)
 
   low *= 1e+2
   high *= 1e+2
@@ -131,10 +131,10 @@ class ParamsGenerator(object):
   def __init__(self, 
                N_min, N_max, 
                nx, nz, nt,
-               rs=0):
+               rs=0, coeff_rarefaction_max=20):
     
     self.rs = rs
-    
+    self.coeff_rarefaction_max = coeff_rarefaction_max
     self.nx, self.nz, self.nt = nx, nz, nt
 
     self.vp = get_vp((nz, nz))
@@ -153,16 +153,23 @@ class ParamsGenerator(object):
   def _generate(self):
     self.N_lam = np.random.uniform(low=self.N_min, high=self.N_max)
 
-    self.f0 = np.random.uniform(low=6., high=256.)
+    self.f0 = np.random.uniform(low=6., high=100.)
     
     f_max = self.f0 * 2.5
 
     dd = self.vp_min / self.N_lam / f_max
     self.dd = np.random.uniform(low=dd * 0.7, high=dd * 0.9)
-
-    dt = self.dd/self.vp_max/np.sqrt(2.)
+    
+    dt = self.dd/self.vp_max / np.sqrt(2.)
 
     self.dt = np.random.uniform(low=dt * 0.7, high=dt * 0.9)
+
+    self.coeff_rarefaction = int(1. / 2.5 / f_max / self.dt)
+
+    if self.coeff_rarefaction > self.coeff_rarefaction_max:
+      self.coeff_rarefaction = self.coeff_rarefaction_max
+    
+    #print(self.coeff_rarefaction)
 
   
   def set_simulator_params(self):
@@ -171,11 +178,13 @@ class ParamsGenerator(object):
     self.srcx = self._get_rand_src(self.dd, self.nx, nabs)
     self.srcz = self._get_rand_src(self.dd, self.nz, nabs)
     
-    simulator = Simulation(self.nx, self.nz, self.dd, self.nt, self.dt,
+    simulator = Simulation(self.nx, self.nz, self.dd, 
+                           self.nt * self.coeff_rarefaction, self.dt,
                            self.srcx, self.srcz, nabs,
                            self.get_rand_a(),
                            True, self.vp,
-                           self.get_rand_wav(self.nt, self.dt, self.f0))
+                           self.get_rand_wav(self.nt * self.coeff_rarefaction, 
+                                             self.dt, self.f0))
     start = time.time()
     simulator.fd_ac()
     end = time.time()
@@ -201,7 +210,16 @@ class ParamsGenerator(object):
 
 
 def RMSE_(x, y):
+  if x.std()==0 or y.std()==0:
+    return 0
   return torch.sqrt(F.mse_loss(x / x.std(), y / y.std()))
+
+def RMSE_batch_one_picture(x, y):
+  cost = torch.zeros(x.shape[:1])
+  for i in range(cost.shape[0]):
+    cost[i] = RMSE_(x[i], y[i])
+  return cost.mean()
+
 
 def RMSE_batch(x, y):
   cost = torch.zeros(x.shape[:2])
@@ -217,18 +235,32 @@ def RMSE_batch_obo(x, y):
   return cost.mean()
 
 def correlation_(x, y):
+  if x.std()==0 or y.std()==0:
+    return 0
   x /= x.std()
   y /= y.std()
   vx = x - torch.mean(x, axis=(-1, -2))
   vy = y - torch.mean(y, axis=(-1, -2))
+  # print((torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2))))
   cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)))
   return cost
 
+def correlation_batch_one_picture(x, y):
+  cost = torch.zeros(x.shape[:1])
+  for i in range(cost.shape[0]):
+    cost[i] = correlation_(x[i], y[i])
+  return cost.mean()
+
+
+
 def correlation_batch(x, y):
   cost = torch.zeros(x.shape[:2])
+  
   for i in range(cost.shape[0]):
     for j in range(cost.shape[1]):
       cost[i, j] = correlation_(x[i, j], y[i, j])
+      # print('cost 'cost[i, j])
+  # print (cost.mean())
   return cost.mean()
 
 def correlation_obo(x, y):

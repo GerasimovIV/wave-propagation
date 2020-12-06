@@ -13,8 +13,9 @@ class InftyLoss(nn.Module):
 
 
 class WaveLoss(nn.Module):
-  def __init__(self, order='l1', scale=1):
+  def __init__(self, order='l1', scale=1, factor=None):
     super(WaveLoss, self).__init__()
+    self.factor = factor
 
     self.order = order
     self.scale =  scale
@@ -27,7 +28,8 @@ class WaveLoss(nn.Module):
       self.loss = InftyLoss()
 
   def forward(self, x, y):
-    return self.loss(x, y) * self.scale
+    loss = self.loss(x, y) if self.factor is not None else self.loss(x / x.std(), y / y.std())
+    return loss * self.scale
 
 
 def hessian_diag_u(inputs, net_forward):

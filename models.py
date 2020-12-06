@@ -3,6 +3,7 @@ import torch.nn.functional as F
 #from torch.nn.parameter import Parameter
 
 from conv_gru import ConvGRU, ConvGRUCell
+from conv_lstm import ConvLSTM, ConvLSTMCell
 from losses import WaveLoss, hessian_diag_u
 
 def sparseFunction(x, s, activation=torch.relu, f=torch.sigmoid):
@@ -85,6 +86,27 @@ class STRConvGRUCell(ConvGRUCell, nn.Module):
                           kernel_size=kernel_size,
                           padding=self.padding,
                           bias=self.bias)
+
+
+class STRConvLSTMCell(ConvLSTMCell, nn.Module):
+    def __init__(self, in_channels, hidden_channels, kernel_size, bias, dtype, pruning=True):
+
+        super(ConvLSTMCell, self).__init__()
+
+        self.input_dim  = in_channels
+        self.hidden_dim = hidden_channels
+
+        self.kernel_size = kernel_size
+        self.padding = kernel_size[0] // 2, kernel_size[1] // 2
+        self.bias = bias
+
+        conv_class = STRConv if pruning else nn.Conv2d
+        
+        self.conv = conv_class(in_channels=self.input_dim + self.hidden_dim,
+                                  out_channels=4 * self.hidden_dim,
+                                  kernel_size=self.kernel_size,
+                                  padding=self.padding,
+                                  bias=self.bias)
 
 
 class FastConvGRUCell(ConvGRUCell, nn.Module):
@@ -173,6 +195,45 @@ class STRConvGRU(ConvGRU, nn.Module):
     self.cell_list = nn.ModuleList(cell_list)
 
 
+class STRConvLSTM(ConvLSTM, nn.Module):
+  def __init__(self, 
+               in_channels, hidden_channels, kernel_size, num_layers,
+               dtype=torch.cuda.FloatTensor, batch_first=False, bias=True, return_all_layers=False, 
+               mode='fast', pruning=True):
+    
+    super(ConvLSTM, self).__init__()
+    
+    kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
+    hidden_channels  = self._extend_for_multilayer(hidden_channels, num_layers)
+    
+    if not len(kernel_size) == len(hidden_channels) == num_layers:
+        raise ValueError('Inconsistent list length.')
+
+    self.input_dim = in_channels
+    self.hidden_dim = hidden_channels
+    self.kernel_size = kernel_size
+    self.dtype = dtype
+    self.num_layers = num_layers
+    self.batch_first = batch_first
+    self.bias = bias
+    self.return_all_layers = return_all_layers
+
+    cell = STRConvLSTMCell# if mode != 'fast' else FastConvGRUCell
+    #print(cell)
+    cell_list = []
+    for i in range(0, self.num_layers):
+        cur_input_dim = in_channels if i == 0 else hidden_channels[i - 1]
+        cell_list.append(cell(#input_size=(self.height, self.width),
+                              in_channels=cur_input_dim,
+                              hidden_channels=self.hidden_dim[i],
+                              kernel_size=self.kernel_size[i],
+                              bias=self.bias,
+                              dtype=self.dtype,
+                              pruning=pruning))
+
+    self.cell_list = nn.ModuleList(cell_list)
+
+
 class Encoder(nn.Module):
   def __init__(self, 
               in_channels=1, out_channels=32, kernel_size=3, padding=1, n_layers=2,
@@ -205,6 +266,29 @@ class Decoder(nn.Module):
   def __init__(self, in_channels=32, out_channels=1, kernel_size=3, padding=1, stride=1, n_layers=2, 
                pruning=True, activation=nn.Softplus):
     super(Decoder, self).__init__()
+    self.out_channels = out_channels
+    
+    self.model = nn.Sequential()
+    for i in range(n_layers):
+      #out = in_channels // 2 if i != n_layers - 1 and self.out_channels != 1 else 1
+      out = in_channels // 2 if self.out_channels != 1 else 1
+      
+      self.model.add_module('conv_T_block_' + str(i), conv_T_block(in_channels, out, kernel_size, stride, padding, pruning))
+      #if i != n_layers - 1:
+      if self.out_channels != 1:
+        self.model.add_module('activ_' + str(i), activation())
+
+      in_channels = in_channels // 2
+
+  
+  def forward(self, input):
+    return self.model(input)
+
+
+class Decoder_old(nn.Module):
+  def __init__(self, in_channels=32, out_channels=1, kernel_size=3, padding=1, stride=1, n_layers=2, 
+               pruning=True, activation=nn.Softplus):
+    super(Decoder_old, self).__init__()
     
     self.model = nn.Sequential()
     for i in range(n_layers):
@@ -245,7 +329,7 @@ class WaveAE(BaseWave):
     self.encoder = Encoder(in_channels=in_channels, out_channels=bottle_neck, n_layers=n_layers,
                            kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
     
-    self.decoder = Decoder(in_channels=bottle_neck, out_channels=1, n_layers=n_layers, stride=1,
+    self.decoder = Decoder_old(in_channels=bottle_neck, out_channels=1, n_layers=n_layers, stride=1,
                            kernel_size=kernel_size, pruning=pruning, activation=activation)
 
 
@@ -331,21 +415,25 @@ class WaveGRUModel(BaseWave):
 
     self.data_to_h0 = Encoder(in_channels=1, out_channels=bottle_neck, n_layers=n_layers,
                            kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
-    self.encoder = Encoder(in_channels=1, out_channels=bottle_neck, n_layers=n_layers,
+    self.encoder = Encoder(in_channels=1, out_channels=bottle_neck // 2, n_layers=n_layers // 2,
                            kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
 
-    self.decoder  = Decoder(in_channels=rnn_channels, out_channels=1, n_layers=n_layers, stride=1,
+    self.encoder_1 = Encoder(in_channels=bottle_neck // 2, out_channels=bottle_neck, n_layers=n_layers // 2,
+                           kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
+
+    self.decoder  = Decoder(in_channels=rnn_channels, out_channels=rnn_channels // 2, n_layers=n_layers // 2, stride=1,
+                           kernel_size=kernel_size, pruning=pruning, activation=activation)
+    
+    self.decoder_1  = Decoder(in_channels=rnn_channels // 2, out_channels=1, n_layers=n_layers // 2, stride=1,
                            kernel_size=kernel_size, pruning=pruning, activation=activation)
     
     self.conv_gru = STRConvGRU(input_dim=bottle_neck,
                               hidden_dim=[rnn_channels],
                               kernel_size=(kernel_size, kernel_size),
                               num_layers=1,
-                              dtype=torch.DoubleTensor,
                               batch_first=True,
                               bias = True,
-                              return_all_layers = False, 
-                              mode=mode, pruning=pruning)
+                              return_all_layers = False, pruning=pruning)
 
   
   def seq_to_cnn(self, data):
@@ -357,13 +445,16 @@ class WaveGRUModel(BaseWave):
 
     initial_hid = self.data_to_h0(eq_features)
     shape = solutions.shape
-    # print(shape)
-    x = self.encoder(seq_to_cnn(solutions.unsqueeze(2)))
+    #print(shape)
+    out = self.encoder(seq_to_cnn(solutions.unsqueeze(2)))
+    #print(out.shape)
+    x = self.encoder_1(out)
+    #print(x.shape)
     x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3])
-    # print(x.shape)
+    #print(x.shape)
     #print(initial_hid.shape)
 
-    output, _ = self.conv_gru(x, initial_hid)
+    output, _ = self.conv_gru(x, torch.zeros_like(x[:, 0]))
     
     if self.hidden_control is not None:
       h_diff = self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
@@ -372,10 +463,18 @@ class WaveGRUModel(BaseWave):
       h_diff = 0.
 
     x = output[0]
+    #print('here', x.shape)
+    #print(seq_to_cnn(x).shape)
     x = self.decoder(seq_to_cnn(x))
+    #print('feeee', torch.cat([x, out], dim=1).shape)
+    #x = self.decoder_1(torch.cat([x, out], dim=1))
+    #x = x + out
+    x = self.decoder_1(x) 
     
+    #print(x.shape)
     # print(x.shape)
     x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
+    #print(x.shape)
     return x, h_diff 
 
 
@@ -399,6 +498,95 @@ class OneByOne(nn.Module):
     return P, residual
 
 
+class WaveLSTMModel(BaseWave):
+  def __init__(self, 
+               bottle_neck=32, 
+               rnn_channels=32,
+               n_layers=2,
+               kernel_size=3,
+               pooling=nn.MaxPool2d,
+               activation=nn.Softplus, 
+               mode='fast', 
+               pruning=True, 
+               hidden_control=None):
+    super(WaveLSTMModel, self).__init__()
+    
+    self.model_type = 'LSTM'
+    self.pruning = pruning
 
+    if hidden_control is not None:
+      assert isinstance(hidden_control, dict)
+      assert 'ord' in hidden_control.keys()
+      assert 'lam' in hidden_control.keys()
 
+      self.hidden_loss = WaveLoss(order=hidden_control['ord'], scale=hidden_control['lam'])
+
+    
+    self.hidden_control = hidden_control
+
+    self.data_to_h0 = Encoder(in_channels=1, out_channels=bottle_neck, n_layers=n_layers,
+                           kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
+    self.encoder = Encoder(in_channels=1, out_channels=bottle_neck // 2, n_layers=n_layers // 2,
+                           kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
+
+    self.encoder_1 = Encoder(in_channels=bottle_neck // 2, out_channels=bottle_neck, n_layers=n_layers // 2,
+                           kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
+
+    self.decoder  = Decoder(in_channels=rnn_channels, out_channels=rnn_channels // 2, n_layers=n_layers // 2, stride=1,
+                           kernel_size=kernel_size, pruning=pruning, activation=activation)
+    
+    self.decoder_1  = Decoder(in_channels=rnn_channels // 2, out_channels=1, n_layers=n_layers // 2, stride=1,
+                           kernel_size=kernel_size, pruning=pruning, activation=activation)
+    # in_channels, hidden_channels, kernel_size, num_layers
+    self.conv_lstm = STRConvLSTM(in_channels=bottle_neck,
+                              hidden_channels=[rnn_channels],
+                              kernel_size=(kernel_size, kernel_size),
+                              num_layers=1,
+                              dtype=torch.DoubleTensor,
+                              batch_first=True,
+                              bias = True,
+                              return_all_layers = False, 
+                              mode=mode, pruning=pruning)
+
+  
+  def seq_to_cnn(self, data):
+    shape = data.shape
+    return data.reshape(shape[0] * shape[1], *shape[2:])
+
+  
+  def forward(self, solutions, eq_features):
+
+    initial_hid = self.data_to_h0(eq_features)
+    shape = solutions.shape
+    #print(shape)
+    out = self.encoder(seq_to_cnn(solutions.unsqueeze(2)))
+    #print(out.shape)
+    x = self.encoder_1(out)
+    #print(x.shape)
+    x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3])
+    #print(x.shape)
+    #print(initial_hid.shape)
+
+    output, _ = self.conv_lstm(x, initial_hid)
+    
+    if self.hidden_control is not None:
+      h_diff = self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
+      #h_diff = output[0][:, :-1, :, :, :] - x[:, 1:, :, :, :]
+    else:
+      h_diff = 0.
+
+    x = output[0]
+    #print('here', x.shape)
+    #print(seq_to_cnn(x).shape)
+    x = self.decoder(seq_to_cnn(x))
+    #print('feeee', torch.cat([x, out], dim=1).shape)
+    #x = self.decoder_1(torch.cat([x, out], dim=1))
+    #x = x + out
+    x = self.decoder_1(x) 
+    
+    #print(x.shape)
+    # print(x.shape)
+    x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
+    #print(x.shape)
+    return x, h_diff
 
