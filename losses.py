@@ -8,17 +8,18 @@ class InftyLoss(nn.Module):
   
   def forward(self, x, y):
     res = torch.abs(x - y)
-    res = res.view(res.shape[0] * res.shape[1], -1)
+    res = res.reshape(res.shape[0] * res.shape[1], -1)
     return torch.norm(res, p=np.Inf, dim=1).mean()
 
 
 class WaveLoss(nn.Module):
-  def __init__(self, order='l1', scale=1, factor=None):
+  def __init__(self, order='l1', scale=1, factor=None, masked=None):
     super(WaveLoss, self).__init__()
     self.factor = factor
 
     self.order = order
     self.scale =  scale
+    self.masked = masked
 
     if order == 'l1':
       self.loss = nn.L1Loss()
@@ -28,7 +29,15 @@ class WaveLoss(nn.Module):
       self.loss = InftyLoss()
 
   def forward(self, x, y):
-    loss = self.loss(x, y) if self.factor is not None else self.loss(x / x.std(), y / y.std())
+    if self.masked is not None:
+      loss_1 = self.loss(torch.abs(y) * x, torch.abs(y) * y) if self.factor is  None else self.loss(x / x.std(), y / y.std())
+      mask = y == 0
+      loss_2 = self.loss(mask * x, mask * y) if self.factor is  None else self.loss(x / x.std(), y / y.std())
+
+      loss = (1 - self.masked) * loss_1 + self.masked * loss_2
+    else:
+      loss = self.loss(x, y) if self.factor is  None else self.loss(x / x.std(), y / y.std())
+
     return loss * self.scale
 
 

@@ -3,7 +3,7 @@ from train_utils import get_batch
 from utils import correlation_batch_one_picture, RMSE_batch_one_picture
 from models import seq_to_cnn
 import time
-
+import numpy as np
 def test_model_model(model_1, model_2, N_min=4, N_max=6, nx=80, nz=80, nt=50, batch_size=2, device='cuda', separate_time=10):
 
   model_1.train(False)
@@ -240,7 +240,7 @@ def test_diff_model(model, N_min=4, N_max=6, nx=80, nz=80, nt=50, batch_size=2, 
 
 
 
-def test_diff_model__(model, N_min=4, N_max=6, nx=80, nz=80, nt=50, batch_size=2, device='cuda', separate_time=10):
+def test_diff_model__(model, N_min=4, N_max=6, nx=80, nz=80, nt=50, batch_size=2, device='cuda', separate_time=10, mode='itself'):
 
   model.train(False)
   pred_list = []
@@ -258,8 +258,8 @@ def test_diff_model__(model, N_min=4, N_max=6, nx=80, nz=80, nt=50, batch_size=2
   X_labels = torch.from_numpy(batch['u_labels']).float()#[:, :separate_time, :, :]
   X_labels /= factor 
 
-  predictions = torch.zeros_like(X_labels).float()
-  predictions[:, :separate_time, :, :] = X_labels[:, :separate_time, :, :]
+  predictions = torch.zeros(size=(X_labels.shape[0], nt, X_labels.shape[2], X_labels.shape[3])).float()
+  predictions[:, 1:separate_time + 1, :, :] = X_labels[:, :separate_time, :, :]
 
 
   context = None
@@ -273,36 +273,26 @@ def test_diff_model__(model, N_min=4, N_max=6, nx=80, nz=80, nt=50, batch_size=2
       t_nn += (time.time() - start) / batch_size
     else:
       start = time.time()
-      print('X ',X.shape)
+      # print('X ',X.shape)
       pred, reg_loss, _ = model(X[:, :, :, :].to(device), X_vp.unsqueeze(1).to(device))
       t_nn += time.time() - start
-      print('p ', pred.shape)
-      print('P ', predictions.shape)
+      # print('p ', pred.shape)
+      # print('P ', predictions.shape)
 
-    predictions[:, t + separate_time, :, :] = pred[:, -1, :, :]
-    # X = predictions[:, :t + separate_time + 1, :, :]
-    X = X_labels[:, :t + separate_time + 1, :, :]
+    fact = 1.#predictions[:, :t + separate_time, :, :].std() / pred[:, -1, :, :].std() #* np.sqrt(2.5)
+
+    predictions[:, t + separate_time + 1, :, :] = pred[:, -1, :, :] * fact
+    
+    if mode == 'itself':
+      X = predictions[:, :t + separate_time + 1 + 1, :, :]
+    elif mode == 'help_diff':
+      X = X_labels[:, :t + separate_time + 1, :, :]
     add_source(X, batch)
-    print('X1 ',X.shape)
-    # predictions[:, t, :, :] =  pred[:, t, :, :]
-    # x[:, t, :, :] =  pred[:, t, :, :]
-    # u = pred
-    #u /= u.std() * predictions[:, t - 1, :, :].std()
-    #hidden = u
-    #metrix_coeff['correlation'].append(correlation_batch_one_picture(pred.to(device), u_next[:, t, :, :].to(device)).item())
-    #metrix_coeff['RMSE'].append(RMSE_batch_one_picture(pred.to(device), u_next[:, t, :, :].to(device)).item())
-    # pred_list.append(pred)
-    # u = torch.from_numpy(batch['u'][:, t, :, :]).float().unsqueeze(1).to(device)
-    # hidden = pred
-    # if t < separate_time:
-    #   continue
-    # else:
-    #   predictions[:, t, :, :] = pred.squeeze(1)
-    # #  u = pred
+
 
     
 
-  return predictions, X_labels, X_vp.unsqueeze(1), batch['f0_list']
+  return predictions[:, 1:, :, :], X_labels, X_vp.unsqueeze(1), batch['f0_list']
 
 def add_source(X, batch):
   tm = X.shape[1]

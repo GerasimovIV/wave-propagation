@@ -60,7 +60,7 @@ def plot_metrics(model, epoch, loss_hist, metrix_coeff):
     plot_metric(loss_hist, '#Epochs', 'Loss', 'Loss')
     plot_metric(metrix_coeff, {'RMSE': '#Epochs', 'correlation': '#Epochs'}, 
                               {'RMSE': '', 'correlation': ''}, 
-                              {'RMSE': 'Metric RMSE', 'correlation': 'Metric correlation'}, on_one_plot=False)
+                              {'RMSE': 'Metric RMSE (yscale=log)', 'correlation': 'Metric correlation'}, on_one_plot=False)
     
 
 
@@ -73,7 +73,7 @@ def plot_metrics_obo(model, epoch, loss_hist, metrix_coeff):
     plot_metric(loss_hist, '#Epochs', 'Loss', 'Loss')
     plot_metric(metrix_coeff, {'RMSE': '#Epochs', 'correlation': '#Epochs'}, 
                               {'RMSE': '', 'correlation': ''}, 
-                              {'RMSE': 'Metric RMSE', 'correlation': 'Metric correlation'}, on_one_plot=False)
+                              {'RMSE': 'Metric RMSE (yscale=log)', 'correlation': 'Metric correlation'}, on_one_plot=False)
     
 
 

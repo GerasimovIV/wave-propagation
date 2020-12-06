@@ -118,7 +118,7 @@ def get_label_OBO_from_video(data, tn, batch_size=60):# result_data from get_vid
 
 
 def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
-          epoch_time_fd, n_batches_per_epoch, batch_size, device, loss, batch_factors):#, scheduler):
+          epoch_time_fd, n_batches_per_epoch, batch_size, device, loss):#, scheduler):
   train_loss = 0
   model.train(True)
   t_nn = 0.

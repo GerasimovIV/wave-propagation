@@ -307,7 +307,10 @@ def model_best(loss_hist, metrix_coeff):
 
 def load_model(PATH, model, optimizer, loss_hist, metrix_coeff):
   
-  checkpoint = torch.load(PATH, map_location=torch.device('cpu'))
+  try:
+    checkpoint = torch.load(PATH)
+  except RuntimeError:
+    checkpoint = torch.load(PATH, map_location=torch.device('cpu'))
   
 
   try:
@@ -336,7 +339,7 @@ def load_model(PATH, model, optimizer, loss_hist, metrix_coeff):
 
 def load_metrics(PATH):
   
-  checkpoint = torch.load(PATH, map_location=torch.device('cpu'))
+  checkpoint = torch.load(PATH)
   
   epoch = checkpoint['epoch']
   loss_hist = checkpoint['loss_hist']
