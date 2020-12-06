@@ -88,7 +88,7 @@ class ConvLSTM(nn.Module):
 
         self.cell_list = nn.ModuleList(cell_list)
 
-    def forward(self, input_tensor, hidden_state=None):
+    def forward(self, input_tensor, hidden_state=None, context=None):
         """
         Parameters
         ----------
@@ -106,7 +106,7 @@ class ConvLSTM(nn.Module):
 
         # Implement stateful ConvLSTM
         if hidden_state is not None:
-            hidden_state = (torch.zeros_like(hidden_state), hidden_state)
+            hidden_state = (torch.zeros_like(hidden_state) if context is None else context, hidden_state)
             # raise NotImplementedError()
         else:
             b, _, _, h, w = input_tensor.shape
@@ -117,10 +117,11 @@ class ConvLSTM(nn.Module):
 
         seq_len = input_tensor.size(1)
         cur_layer_input = input_tensor
-
+        h, c = hidden_state
+        
         for layer_idx in range(self.num_layers):
 
-            h, c = hidden_state#[layer_idx]
+            #[layer_idx]
             output_inner = []
             for t in range(seq_len):
 
@@ -133,11 +134,11 @@ class ConvLSTM(nn.Module):
 
             layer_output_list.append(layer_output)
             last_state_list.append([h, c])
-
+            # print('last_state_list ', len(last_state_list[0]))
         if not self.return_all_layers:
             layer_output_list = layer_output_list[-1:]
             last_state_list = last_state_list[-1:]
-
+            # print('last_state_list ', len(last_state_list[0]))
         return layer_output_list, last_state_list
 
     def _init_hidden(self, b, h, w):

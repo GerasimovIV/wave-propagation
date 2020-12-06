@@ -307,7 +307,7 @@ class Decoder_old(nn.Module):
 
 def seq_to_cnn(data):
   shape = data.shape
-  return data.reshape(shape[0] * shape[1], *shape[2:])
+  return data.view(shape[0] * shape[1], *shape[2:])
 
 
 class BaseWave(nn.Module):
@@ -430,6 +430,7 @@ class WaveGRUModel(BaseWave):
     self.conv_gru = STRConvGRU(input_dim=bottle_neck,
                               hidden_dim=[rnn_channels],
                               kernel_size=(kernel_size, kernel_size),
+                              dtype='str',
                               num_layers=1,
                               batch_first=True,
                               bias = True,
@@ -554,12 +555,12 @@ class WaveLSTMModel(BaseWave):
     return data.reshape(shape[0] * shape[1], *shape[2:])
 
   
-  def forward(self, solutions, eq_features):
-
+  def forward(self, solutions, eq_features, context=None):
+    # print(solutions.shape, eq_features.shape)
     initial_hid = self.data_to_h0(eq_features)
     shape = solutions.shape
     #print(shape)
-    out = self.encoder(seq_to_cnn(solutions.unsqueeze(2)))
+    out = self.encoder(seq_to_cnn(solutions.contiguous().unsqueeze(2)))
     #print(out.shape)
     x = self.encoder_1(out)
     #print(x.shape)
@@ -567,17 +568,18 @@ class WaveLSTMModel(BaseWave):
     #print(x.shape)
     #print(initial_hid.shape)
 
-    output, _ = self.conv_lstm(x, initial_hid)
+    output, context = self.conv_lstm(x, torch.zeros_like(initial_hid), initial_hid)
     
     if self.hidden_control is not None:
-      h_diff = self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
+      h_diff = 0.#self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
       #h_diff = output[0][:, :-1, :, :, :] - x[:, 1:, :, :, :]
     else:
       h_diff = 0.
 
     x = output[0]
-    #print('here', x.shape)
-    #print(seq_to_cnn(x).shape)
+
+    # print('here', x.shape)
+    # print(seq_to_cnn(x).shape)
     x = self.decoder(seq_to_cnn(x))
     #print('feeee', torch.cat([x, out], dim=1).shape)
     #x = self.decoder_1(torch.cat([x, out], dim=1))
@@ -588,5 +590,6 @@ class WaveLSTMModel(BaseWave):
     # print(x.shape)
     x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
     #print(x.shape)
-    return x, h_diff
+    return x, h_diff, context
+
 

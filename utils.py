@@ -210,8 +210,6 @@ class ParamsGenerator(object):
 
 
 def RMSE_(x, y):
-  if x.std()==0 or y.std()==0:
-    return 0
   return torch.sqrt(F.mse_loss(x / x.std(), y / y.std()))
 
 def RMSE_batch_one_picture(x, y):
@@ -235,13 +233,10 @@ def RMSE_batch_obo(x, y):
   return cost.mean()
 
 def correlation_(x, y):
-  if x.std()==0 or y.std()==0:
-    return 0
   x /= x.std()
   y /= y.std()
   vx = x - torch.mean(x, axis=(-1, -2))
   vy = y - torch.mean(y, axis=(-1, -2))
-  # print((torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2))))
   cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)))
   return cost
 
@@ -255,12 +250,9 @@ def correlation_batch_one_picture(x, y):
 
 def correlation_batch(x, y):
   cost = torch.zeros(x.shape[:2])
-  
   for i in range(cost.shape[0]):
     for j in range(cost.shape[1]):
       cost[i, j] = correlation_(x[i, j], y[i, j])
-      # print('cost 'cost[i, j])
-  # print (cost.mean())
   return cost.mean()
 
 def correlation_obo(x, y):
@@ -315,9 +307,13 @@ def model_best(loss_hist, metrix_coeff):
 
 def load_model(PATH, model, optimizer, loss_hist, metrix_coeff):
   
-  checkpoint = torch.load(PATH)
+  checkpoint = torch.load(PATH, map_location=torch.device('cpu'))
   
-  optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+  try:
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+  except ValueError:
+    print('Load optimiizer error: loaded state dict contains a parameter group that doesnt match the size of optimizers group')
   epoch = checkpoint['epoch']
   loss_hist = checkpoint['loss_hist']
   metrix_coeff = checkpoint['metrix_coeff']
@@ -340,7 +336,7 @@ def load_model(PATH, model, optimizer, loss_hist, metrix_coeff):
 
 def load_metrics(PATH):
   
-  checkpoint = torch.load(PATH)
+  checkpoint = torch.load(PATH, map_location=torch.device('cpu'))
   
   epoch = checkpoint['epoch']
   loss_hist = checkpoint['loss_hist']

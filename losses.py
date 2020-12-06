@@ -81,7 +81,3 @@ def hvp(f, x, v):
 #     #fooo = hvp(f, inputs, torch.ones_like(inputs))
 #     #print(fooo)
 #     return hessian_pred# L_phys = lam * self.loss()
-
-
-
-

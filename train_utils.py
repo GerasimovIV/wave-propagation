@@ -28,16 +28,10 @@ def get_batch(N_min, N_max, nx, nz, nt, batch_size=20):
     params_generator = ParamsGenerator(N_min, N_max, nx, nz, nt + t_init)
     Simulator, t_i = params_generator.set_simulator_params()
     exec_time.append(t_i)
-    q.append(Simulator.wav[::params_generator.coeff_rarefaction][t_init: ])
-    #print(params_generator.coeff_rarefaction)
-    #print(np.array(Simulator.field2d.transpose((2, 0, 1))).shape[0], params_generator.coeff_rarefaction * (nt + t_init))
-    u_labels.append(np.copy(np.array(Simulator.field2d.transpose((2, 0, 1)))[::params_generator.coeff_rarefaction][t_init: ]))
-    Simulator.field2d = Simulator.field2d.transpose((2, 0, 1))
-    #Simulator.field2d *= np.array(Simulator.vp ** 2)[None]
-    Simulator.field2d[:, Simulator.srci, Simulator.srcj] += Simulator.wav / Simulator.dd ** 2 * (Simulator.dt) ** 2 * params_generator.coeff_rarefaction**2
-    batch_sols.append(np.array(Simulator.field2d)[::params_generator.coeff_rarefaction][t_init: ])
-    # print(batch_sols[-1].shape)
-    # print(u_labels[-1].shape)
+    q.append(Simulator.wav[::params_generator.coeff_rarefaction][t_init:])
+    u_labels.append(np.copy(np.array(Simulator.field2d.transpose((2, 0, 1)))[::params_generator.coeff_rarefaction][t_init:]))
+    Simulator.field2d[Simulator.srci, Simulator.srcj] += Simulator.wav / Simulator.dd ** 2 * (Simulator.dt) ** 2 * params_generator.coeff_rarefaction**2
+    batch_sols.append(np.array(Simulator.field2d.transpose((2, 0, 1)))[::params_generator.coeff_rarefaction][t_init:])
     initial_features.append(np.array(Simulator.vp))
     dd.append(Simulator.dd)
     dt.append(Simulator.dt)
@@ -55,7 +49,7 @@ def get_batch(N_min, N_max, nx, nz, nt, batch_size=20):
   results_data['dd'] = np.stack(dd)
   results_data['dt'] = np.stack(dt)
   results_data['f0_list'] = np.stack(f0_list)
-  results_data['u_labels'] = np.stack(u_labels)[:, 3:, :, :]
+  results_data['u_labels'] = np.stack(u_labels)[:, 1:, :, :]
   results_data['scri_l'] = np.stack(srci_l)
   results_data['scrj_l'] = np.stack(srcj_l)
   results_data['dT'] = np.stack(dT)
@@ -63,8 +57,8 @@ def get_batch(N_min, N_max, nx, nz, nt, batch_size=20):
   return results_data
   # return np.stack((np.stack(batch_sols), np.repeat(np.expand_dims(np.stack(initial_features), axis=1), nt, axis=1)), axis=2), t / batch_size
 
-# def get_video_OBO(N_min, N_max, nx, nz, nt):
-#   pass
+def get_video_OBO(N_min, N_max, nx, nz, nt):
+  pass
   # results_data = {}
 
   # t_init = np.random.randint(low=0, high=400)
@@ -83,48 +77,48 @@ def get_batch(N_min, N_max, nx, nz, nt, batch_size=20):
 
   # return results_data
 
-# def get_inp_OBO_from_video(data, tn, batch_size=60):# result_data from get_video_OBO
-#   t_init = data['t_init']
-#   # ti = tn // (data['u'].shape[1] * data['u'].shape[1])
-#   # xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
-#   # zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
-#   inp = np.zeros((batch_size, 10)) # x, z, t, vp, u, srci, srcj, q, dd, dt
-#   for j in range(batch_size):
-#     ti = tn // (data['u'].shape[1] * data['u'].shape[1])
-#     xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
-#     zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
-#     # print(xi, zi, ti, tn)
-#     inp[j, :] = np.array([xi*data['dd'], zi*data['dd'], (ti + t_init) * data['dt'],
-#                             data['vp'][xi, zi], data['u'][ti, xi, zi], data['srci']*data['dd'],
-#                             data['srcj']*data['dd'], data['q'][ti], data['dd'], data['dt']])
-#     tn+=1
+def get_inp_OBO_from_video(data, tn, batch_size=60):# result_data from get_video_OBO
+  t_init = data['t_init']
+  # ti = tn // (data['u'].shape[1] * data['u'].shape[1])
+  # xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
+  # zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
+  inp = np.zeros((batch_size, 10)) # x, z, t, vp, u, srci, srcj, q, dd, dt
+  for j in range(batch_size):
+    ti = tn // (data['u'].shape[1] * data['u'].shape[1])
+    xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
+    zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
+    # print(xi, zi, ti, tn)
+    inp[j, :] = np.array([xi*data['dd'], zi*data['dd'], (ti + t_init) * data['dt'],
+                            data['vp'][xi, zi], data['u'][ti, xi, zi], data['srci']*data['dd'],
+                            data['srcj']*data['dd'], data['q'][ti], data['dd'], data['dt']])
+    tn+=1
   
-#   return inp
+  return inp
 
-# def get_label_OBO_from_video(data, tn, batch_size=60):# result_data from get_video_OBO
-#   t_init = data['t_init']
-#   tn += data['u'].shape[-1] * data['u'].shape[-2]
-#   # ti = tn // (data['u'].shape[1] * data['u'].shape[1])
-#   # xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
-#   # zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
-#   inp = np.zeros((batch_size, 10)) # x, z, t, vp, u, srci, srcj, q, dd, dt
-#   for j in range(batch_size):
-#     ti = tn // (data['u'].shape[1] * data['u'].shape[1])
-#     xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
-#     zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
-#     # print(xi, zi, ti, tn)
-#     inp[j, :] = np.array([xi*data['dd'], zi*data['dd'], (ti + t_init) * data['dt'],
-#                             data['vp'][xi, zi], data['u'][ti, xi, zi], data['srci']*data['dd'],
-#                             data['srcj']*data['dd'], data['q'][ti], data['dd'], data['dt']])
-#     tn+=1
+def get_label_OBO_from_video(data, tn, batch_size=60):# result_data from get_video_OBO
+  t_init = data['t_init']
+  tn += data['u'].shape[-1] * data['u'].shape[-2]
+  # ti = tn // (data['u'].shape[1] * data['u'].shape[1])
+  # xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
+  # zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
+  inp = np.zeros((batch_size, 10)) # x, z, t, vp, u, srci, srcj, q, dd, dt
+  for j in range(batch_size):
+    ti = tn // (data['u'].shape[1] * data['u'].shape[1])
+    xi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) % data['u'].shape[1]
+    zi = (tn - ti * (data['u'].shape[1] * data['u'].shape[1])) // data['u'].shape[2]
+    # print(xi, zi, ti, tn)
+    inp[j, :] = np.array([xi*data['dd'], zi*data['dd'], (ti + t_init) * data['dt'],
+                            data['vp'][xi, zi], data['u'][ti, xi, zi], data['srci']*data['dd'],
+                            data['srcj']*data['dd'], data['q'][ti], data['dd'], data['dt']])
+    tn+=1
   
-#   return inp
+  return inp
 
 
 
 
 def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
-          epoch_time_fd, n_batches_per_epoch, batch_size, device, loss):#, scheduler):
+          epoch_time_fd, n_batches_per_epoch, batch_size, device, loss, batch_factors):#, scheduler):
   train_loss = 0
   model.train(True)
   t_nn = 0.
@@ -159,6 +153,7 @@ def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
 
     if model.model_type == 'AE':
       start = time.time()
+      # print(X[:, :-1, :, :].shape)
       # predictions = model(X[:, :-1, 0, :, :].to(device))
       predictions = model(X[:, :-1, :, :].to(device))
       t_nn += (time.time() - start) / batch_size
@@ -166,7 +161,7 @@ def train(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
     else:
       start = time.time()
       # predictions, reg_loss = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 1, :, :].unsqueeze(1).to(device))
-      predictions, reg_loss = model(X[:, :-3, :, :].to(device), X_vp.unsqueeze(1).to(device))
+      predictions, reg_loss, _ = model(X[:, :-1, :, :].to(device), X_vp.unsqueeze(1).to(device))
       t_nn += (time.time() - start) / batch_size
 
       
@@ -241,7 +236,7 @@ def validate(model, optimizer, loss_hist, n_validation_batches,
     else:
       start = time.time()
       # predictions, reg_loss = model(X[:, :-1, 0, :, :].to(device), X[:, 0, 1, :, :].unsqueeze(1).to(device))
-      predictions, reg_loss = model(X[:, :-3, :, :].to(device), X_vp.unsqueeze(1).to(device))
+      predictions, reg_loss, _ = model(X[:, :-1, :, :].to(device), X_vp.unsqueeze(1).to(device))
       t_nn += time.time() - start
 
     times_nn.append(t_nn / batch_size)
@@ -274,238 +269,87 @@ def validate(model, optimizer, loss_hist, n_validation_batches,
 
 
 
-# def train_OBO(model, optimizer, loss_hist, N_min, N_max, nx, nz, nt,
-#               n_videos_per_epoch, batch_size, device, loss):
-#   train_loss = 0
-#   model.train(True)
-
-#   for _ in tqdm(range(n_videos_per_epoch)):
-#     video = get_video_OBO(N_min=N_min, N_max=N_max, nx=nx, nz=nz, nt=nt)
-#     for tn in tqdm(range(0, video['u'].shape[-1]*video['u'].shape[-2]*(video['u'].shape[-3] - 1), batch_size)):
-#       inputs = get_inp_OBO_from_video(video, tn, batch_size=batch_size)
-#       labels = get_label_OBO_from_video(video, tn, batch_size=batch_size)[:, 4]
-#       #x, z, t, vp, u, si, sj, wav
-#       optimizer.zero_grad()
-    
-#       factor = inputs[:, 4].std() 
-
-#       inputs = torch.from_numpy(inputs).float()
-#       inputs[:, 4] /= factor
-      
-#       labels = torch.from_numpy(labels).float()
-#       labels = labels.unsqueeze(1)
-#       predictions, residual = model(inputs.to(device))
-
-#       loss_t = loss(predictions, labels.to(device))
-#       loss_t += residual.mean()
-
-#       loss_t.backward()
-#       optimizer.step()
-#       # scheduler.step()
-      
-#       train_loss += loss_t.item()
-      
-#       del inputs, predictions
-#       gc.collect()
-#       torch.cuda.empty_cache()
-
-
-#   train_loss /= n_videos_per_epoch
-  
-#   loss_hist['train'].append(train_loss)
-
-
-# def validate_obo(model, optimizer, loss_hist, metrix_coeff, N_min, N_max, nx, nz, nt,
-#               n_videos_per_epoch, batch_size, device, loss):
-#   val_loss = 0
-#   model.train(False)
-
-#   for _ in tqdm(range(n_videos_per_epoch)):
-#     video = get_video_OBO(N_min=N_min, N_max=N_max, nx=nx, nz=nz, nt=nt)
-#     for tn in tqdm(range(0, video['u'].shape[-1]*video['u'].shape[-2]*(video['u'].shape[-3] - 1), batch_size)):
-#       inputs = get_inp_OBO_from_video(video, tn, batch_size=batch_size)
-#       labels = get_label_OBO_from_video(video, tn, batch_size=batch_size)[:, 4]
-#       #x, z, t, vp, u, si, sj, wav
-#       optimizer.zero_grad()
-    
-#       factor = inputs[:, 4].std() 
-
-#       inputs = torch.from_numpy(inputs).float()
-#       inputs[:, 4] /= factor
-      
-#       labels = torch.from_numpy(labels).float()
-#       labels = labels.unsqueeze(1)
-#       predictions, residual = model(inputs.to(device))
-
-#       loss_t = loss(predictions, labels.to(device))
-#       loss_t += residual.mean()
-
-#       loss_t.backward()
-#       optimizer.step()
-#       # scheduler.step()
-      
-#       val_loss += loss_t.item()
-      
-#       # if number_i == plot_this:
-#       #   plot_valid_obo(inputs, predictions, batch_size)
-
-      
-
-#   val_loss /= n_videos_per_epoch
-  
-#   loss_hist['val'].append(val_loss)
-
-#   metrix_coeff['correlation'].append(correlation_batch_obo(predictions.to(device), labels.to(device)).item())
-#   metrix_coeff['RMSE'].append(RMSE_batch_obo(predictions.to(device), labels.to(device)).item())
-
-
-
-def get_batch_conv_lstm(N_min, N_max, nx, nz, nt, batch_size=20):
-  
-  initial_features = []
-  exec_time = []
-  dd = []
-  dt = []
-  dT = []
-  q = []
-  f0_list = []
-  srci_l = []
-  srcj_l = []
-  results_data = {}
-  u_labels = []
-  source_matrixes = []
-  for b in range(batch_size):
-    
-    params_generator = ParamsGenerator(N_min, N_max, nx, nz, nt)
-    Simulator, t_i = params_generator.set_simulator_params()
-    exec_time.append(t_i)
-    q.append(Simulator.wav[::params_generator.coeff_rarefaction])
-    
-    u_labels.append(np.copy(np.array(Simulator.field2d.transpose((2, 0, 1)))[::params_generator.coeff_rarefaction]))
-
-    initial_features.append(np.array(Simulator.vp))
-    dd.append(Simulator.dd)
-    dt.append(Simulator.dt)
-    dT.append(Simulator.dt*params_generator.coeff_rarefaction)
-    f0_list.append(params_generator.f0)
-
-    srci_l.append(Simulator.srci)
-    srcj_l.append(Simulator.srcj)
-
-    sm = np.zeros_like(u_labels[-1])
-    sm[:, srci_l[-1], srcj_l[-1]] += q[-1]
-    source_matrixes.append(sm)
-  
-  
-  results_data['vp'] = np.stack(initial_features)
-  results_data['q'] = np.stack(q)
-  results_data['exec_time'] = exec_time
-  results_data['dd'] = np.stack(dd)
-  results_data['dt'] = np.stack(dt)
-  results_data['f0_list'] = np.stack(f0_list)
-  results_data['u_labels'] = np.stack(u_labels)
-  results_data['scri_l'] = np.stack(srci_l)
-  results_data['scrj_l'] = np.stack(srcj_l)
-  results_data['dT'] = np.stack(dT)
-  results_data['source_matrixes'] = np.stack(source_matrixes)
-
-  return results_data
-
-
-def train_clstm(model, optimizer, loss_hist, epoch_time_nn, N_min, N_max, nx, nz, nt,
-          epoch_time_fd, n_batches_per_epoch, batch_size, device, loss):#, scheduler):
+def train_OBO(model, optimizer, loss_hist, N_min, N_max, nx, nz, nt,
+              n_videos_per_epoch, batch_size, device, loss):
   train_loss = 0
   model.train(True)
-  t_nn = 0.
-  t_fd = 0.
 
-  for _ in tqdm(range(n_batches_per_epoch)):
-
-    batch = get_batch_conv_lstm(N_min, N_max, nx, nz, nt, batch_size)
-    optimizer.zero_grad()
+  for _ in tqdm(range(n_videos_per_epoch)):
+    video = get_video_OBO(N_min=N_min, N_max=N_max, nx=nx, nz=nz, nt=nt)
+    for tn in tqdm(range(0, video['u'].shape[-1]*video['u'].shape[-2]*(video['u'].shape[-3] - 1), batch_size)):
+      inputs = get_inp_OBO_from_video(video, tn, batch_size=batch_size)
+      labels = get_label_OBO_from_video(video, tn, batch_size=batch_size)[:, 4]
+      #x, z, t, vp, u, si, sj, wav
+      optimizer.zero_grad()
     
-    factor = 4.0e-09 
+      factor = inputs[:, 4].std() 
 
-    h = torch.from_numpy(batch['vp']).float().unsqueeze(1) # b h w
-    inputs = torch.from_numpy(batch['source_matrixes']).float() # b t h w
-
-    X_labels = torch.from_numpy(batch['u_labels']).float() # b t h w
-    X_labels /= factor
-
-    start = time.time()
-    predictions, reg_loss = model(inputs.to(device), h.to(device))
-    t_nn += (time.time() - start) / batch_size
-
-   
-    loss_t = loss(predictions, X_labels.to(device)) 
-    loss_t += reg_loss
-
-    loss_t.backward()
-    optimizer.step()
-    
-    train_loss += loss_t.item()
-    
-    del inputs, predictions, h, X_labels
-    gc.collect()
-    torch.cuda.empty_cache()
+      inputs = torch.from_numpy(inputs).float()
+      inputs[:, 4] /= factor
       
-  epoch_time_nn.append(t_nn / n_batches_per_epoch)
-  epoch_time_fd.append(t_fd / n_batches_per_epoch)
+      labels = torch.from_numpy(labels).float()
+      labels = labels.unsqueeze(1)
+      predictions, residual = model(inputs.to(device))
 
-  train_loss /= n_batches_per_epoch
+      loss_t = loss(predictions, labels.to(device))
+      loss_t += residual.mean()
+
+      loss_t.backward()
+      optimizer.step()
+      # scheduler.step()
+      
+      train_loss += loss_t.item()
+      
+      del inputs, predictions
+      gc.collect()
+      torch.cuda.empty_cache()
+
+
+  train_loss /= n_videos_per_epoch
   
   loss_hist['train'].append(train_loss)
 
 
-
-
-def validate_clstm(model, optimizer, loss_hist, n_validation_batches, 
-            device, N_min, N_max, nx, nz, nt, loss, batch_size, metrix_coeff):
-  val_loss=0
+def validate_obo(model, optimizer, loss_hist, metrix_coeff, N_min, N_max, nx, nz, nt,
+              n_videos_per_epoch, batch_size, device, loss):
+  val_loss = 0
   model.train(False)
-  plot_this = np.random.randint(low=0, high=n_validation_batches)
-  corr_list = []
-  rmse_list = []
 
-  times_nn = []
-
-  for number_i in tqdm(range(n_validation_batches)):
+  for _ in tqdm(range(n_videos_per_epoch)):
+    video = get_video_OBO(N_min=N_min, N_max=N_max, nx=nx, nz=nz, nt=nt)
+    for tn in tqdm(range(0, video['u'].shape[-1]*video['u'].shape[-2]*(video['u'].shape[-3] - 1), batch_size)):
+      inputs = get_inp_OBO_from_video(video, tn, batch_size=batch_size)
+      labels = get_label_OBO_from_video(video, tn, batch_size=batch_size)[:, 4]
+      #x, z, t, vp, u, si, sj, wav
+      optimizer.zero_grad()
     
+      factor = inputs[:, 4].std() 
 
-    batch = get_batch_conv_lstm(N_min, N_max, nx, nz, nt, batch_size)
-    optimizer.zero_grad()
-    
-    factor = 4.0e-09 
-
-    h = torch.from_numpy(batch['vp']).float().unsqueeze(1) # b 1 h w
-    inputs = torch.from_numpy(batch['source_matrixes']).float() # b t h w
-
-    X_labels = torch.from_numpy(batch['u_labels']).float() # b t h w
-    X_labels /= factor
-
-    start = time.time()
-    predictions, reg_loss = model(inputs.to(device), h.to(device))
-    times_nn.append((time.time() - start) / batch_size)
-
-    loss_t = loss(predictions, X_labels.to(device)) 
-    loss_t += reg_loss
-
-    val_loss += loss_t.item()
-
-    if number_i == plot_this:
+      inputs = torch.from_numpy(inputs).float()
+      inputs[:, 4] /= factor
       
-      plot_valid(X_labels, predictions, h[:, 0, :, :], batch_size, batch['f0_list'])
-    
-    corr_list.append(correlation_batch(predictions.to(device), X_labels.to(device)).item())
-    rmse_list.append(RMSE_batch(predictions.to(device), X_labels.to(device)).item())
+      labels = torch.from_numpy(labels).float()
+      labels = labels.unsqueeze(1)
+      predictions, residual = model(inputs.to(device))
+
+      loss_t = loss(predictions, labels.to(device))
+      loss_t += residual.mean()
+
+      loss_t.backward()
+      optimizer.step()
+      # scheduler.step()
+      
+      val_loss += loss_t.item()
+      
+      # if number_i == plot_this:
+      #   plot_valid_obo(inputs, predictions, batch_size)
+
+      
+
+  val_loss /= n_videos_per_epoch
   
-  val_loss /= n_validation_batches
   loss_hist['val'].append(val_loss)
 
-  
-  metrix_coeff['correlation'].append(np.mean(corr_list))
-  metrix_coeff['RMSE'].append(np.mean(rmse_list))
-  
-  del inputs, predictions, h, X_labels
-  gc.collect()
-  torch.cuda.empty_cache()
+  metrix_coeff['correlation'].append(correlation_batch_obo(predictions.to(device), labels.to(device)).item())
+  metrix_coeff['RMSE'].append(RMSE_batch_obo(predictions.to(device), labels.to(device)).item())
+
