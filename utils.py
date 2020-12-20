@@ -156,18 +156,23 @@ class ParamsGenerator(object):
     self.f0 = np.random.uniform(low=6., high=100.)
     
     f_max = self.f0 * 2.5
-
-    dd = self.vp_min / self.N_lam / f_max
-    self.dd = np.random.uniform(low=dd * 0.7, high=dd * 0.9)
     
-    dt = self.dd/self.vp_max / np.sqrt(2.)
+    self.coeff_rarefaction = 10
+    self.dd = self.vp_max * np.sqrt(2) / (2.5 * self.coeff_rarefaction * f_max)
+    self.dt = 1 / (2.5 * self.coeff_rarefaction * f_max)
+    # print(round(1. / 2.5 / f_max / self.dt))
 
-    self.dt = np.random.uniform(low=dt * 0.7, high=dt * 0.9)
+    # dd = self.vp_min / self.N_lam / f_max
+    # self.dd = np.random.uniform(low=dd * 0.7, high=dd * 0.9)
+    
+    # dt = self.dd/self.vp_max / np.sqrt(2.)
 
-    self.coeff_rarefaction = int(1. / 2.5 / f_max / self.dt)
+    # self.dt = np.random.uniform(low=dt * 0.7, high=dt * 0.9)
 
-    if self.coeff_rarefaction > self.coeff_rarefaction_max:
-      self.coeff_rarefaction = self.coeff_rarefaction_max
+    # self.coeff_rarefaction = int(1. / 2.5 / f_max / self.dt)
+
+    # if self.coeff_rarefaction > self.coeff_rarefaction_max:
+    #   self.coeff_rarefaction = self.coeff_rarefaction_max
     
     #print(self.coeff_rarefaction)
 
@@ -175,6 +180,7 @@ class ParamsGenerator(object):
   def set_simulator_params(self):
     nabs = int(min(self.nx, self.nz) * 0.1)
 
+    self.nabs = nabs
     self.srcx = self._get_rand_src(self.dd, self.nx, nabs)
     self.srcz = self._get_rand_src(self.dd, self.nz, nabs)
     

@@ -7,7 +7,8 @@ from conv_lstm import ConvLSTM, ConvLSTMCell
 from losses import WaveLoss, hessian_diag_u
 
 def sparseFunction(x, s, activation=torch.relu, f=torch.sigmoid):
-  return torch.sign(x) * activation(torch.abs(x) - f(s))
+  w = torch.abs(x)
+  return torch.sign(x) * activation(w - f(s))
 
 
 class STR(nn.Module):
@@ -15,7 +16,7 @@ class STR(nn.Module):
     super(STR, self).__init__()
     self.activation = torch.relu
     self.threshold = nn.Parameter(torch.Tensor([1]), requires_grad=True)
-    self.threshold.data.uniform_(-6., -2.)
+    self.threshold.data.uniform_(-6., -3.5)
     self.f = torch.sigmoid
 
   def to(self, device):
@@ -58,8 +59,10 @@ def conv_block(in_channels, out_channels, kernel_size, stride, padding,
   conv_2d = nn.Conv2d if not pruning else STRConv
 
   return nn.Sequential(conv_2d(in_channels, out_channels, kernel_size, padding=padding), 
-                       nn.BatchNorm2d(out_channels), 
-                       pooling(2), 
+                      #  nn.BatchNorm2d(out_channels),
+                      #  activation(),
+                      #  conv_2d(out_channels, out_channels, kernel_size, padding=padding), 
+                       pooling(2),
                        activation())
 
 
@@ -253,13 +256,17 @@ class Encoder(nn.Module):
 
 
 def conv_T_block(in_channels, out_channels, kernel_size, stride, padding,
-                 pruning):
+                 pruning, activation):
   
   conv_T_2d = nn.ConvTranspose2d if not pruning else STRConvTranspose
 
-  return nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear'),
-                       nn.BatchNorm2d(in_channels),
-                       conv_T_2d(in_channels, out_channels, kernel_size, stride, padding))
+  return nn.Sequential(nn.Upsample(scale_factor=2., mode='bilinear', align_corners=False),
+                      #  nn.BatchNorm2d(in_channels),
+                       activation(),
+                       conv_T_2d(in_channels, out_channels, kernel_size, stride, padding),
+                      #  activation(),
+                      #  conv_T_2d(out_channels, out_channels, kernel_size, stride, padding)
+                      )
 
 
 class Decoder(nn.Module):
@@ -273,7 +280,7 @@ class Decoder(nn.Module):
       #out = in_channels // 2 if i != n_layers - 1 and self.out_channels != 1 else 1
       out = in_channels // 2 if self.out_channels != 1 else 1
       
-      self.model.add_module('conv_T_block_' + str(i), conv_T_block(in_channels, out, kernel_size, stride, padding, pruning))
+      self.model.add_module('conv_T_block_' + str(i), conv_T_block(in_channels, out, kernel_size, stride, padding, pruning, activation))
       #if i != n_layers - 1:
       if self.out_channels != 1:
         self.model.add_module('activ_' + str(i), activation())
@@ -442,12 +449,12 @@ class WaveGRUModel(BaseWave):
     return data.reshape(shape[0] * shape[1], *shape[2:])
 
   
-  def forward(self, solutions, eq_features):
+  def forward(self, solutions, eq_features, *wargs):
 
     initial_hid = self.data_to_h0(eq_features)
     shape = solutions.shape
     #print(shape)
-    out = self.encoder(seq_to_cnn(solutions.unsqueeze(2)))
+    out = self.encoder(seq_to_cnn(solutions.contiguous().unsqueeze(2)))
     #print(out.shape)
     x = self.encoder_1(out)
     #print(x.shape)
@@ -455,10 +462,10 @@ class WaveGRUModel(BaseWave):
     #print(x.shape)
     #print(initial_hid.shape)
 
-    output, _ = self.conv_gru(x, torch.zeros_like(x[:, 0]))
+    output, _ = self.conv_gru(x, initial_hid)#torch.zeros_like(x[:, 0]))
     
     if self.hidden_control is not None:
-      h_diff = self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
+      h_diff = 0.#self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
       #h_diff = output[0][:, :-1, :, :, :] - x[:, 1:, :, :, :]
     else:
       h_diff = 0.
@@ -476,7 +483,7 @@ class WaveGRUModel(BaseWave):
     # print(x.shape)
     x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
     #print(x.shape)
-    return x, h_diff 
+    return x, h_diff, None 
 
 
 class OneByOne(nn.Module):
@@ -524,6 +531,10 @@ class WaveLSTMModel(BaseWave):
 
     
     self.hidden_control = hidden_control
+    
+    self.q_diff = nn.Sequential(nn.Linear(2, bottle_neck),
+                                activation(),
+                                nn.Linear(bottle_neck, 1))
 
     self.data_to_h0 = Encoder(in_channels=1, out_channels=bottle_neck, n_layers=n_layers,
                            kernel_size=kernel_size, pruning=pruning, pooling=pooling, activation=activation)
@@ -555,20 +566,51 @@ class WaveLSTMModel(BaseWave):
     return data.reshape(shape[0] * shape[1], *shape[2:])
 
   
-  def forward(self, solutions, eq_features, context=None):
+  def forward(self, solutions, eq_features, q_prev_curr=None, scri_l=None, scrj_l=None, 
+              context=None, forcing=False):
     # print(solutions.shape, eq_features.shape)
+    # print(q_prev_curr.shape)
+    
+    q = q_prev_curr# if forcing else q_prev_curr[:, 0, :].unsqueeze(1)
+    
+    q_shape = q_prev_curr.shape[:-1]# if forcing else (q_prev_curr.shape[0], 1)
+
+    q = q.reshape(-1, q.shape[-1])
+    # print(q.shape)
+    q = self.q_diff(q).reshape(*q_shape)
+    # print(q.shape)
+    out = solutions# if forcing else solutions[:, 0, :, :].unsqueeze(1)
+    # print(out.shape)
+    # print(q.shape)
+    # print(out.shape)
+    for b in range(q.shape[0]):
+      out[b, :, scri_l[b], scrj_l[b]] += q[b]
+
     initial_hid = self.data_to_h0(eq_features)
-    shape = solutions.shape
+    shape = out.shape
     #print(shape)
-    out = self.encoder(seq_to_cnn(solutions.contiguous().unsqueeze(2)))
+    out = self.encoder(seq_to_cnn(out.contiguous().unsqueeze(2)))
     #print(out.shape)
     x = self.encoder_1(out)
     #print(x.shape)
     x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3])
     #print(x.shape)
     #print(initial_hid.shape)
+    
+    # if forcing:
+    output, context = self.conv_lstm(x, x[:, 0, :, :, :], initial_hid)
 
-    output, context = self.conv_lstm(x, torch.zeros_like(initial_hid), initial_hid)
+    # else:
+    #   context = (x[:, 0, :, :, :], initial_hid)
+    #   output = [x]
+    #   for t in range(solutions.shape[1]):
+    #     # print(type(output[-1]))
+    #     out, context = self.conv_lstm(output[-1], *context)
+    #     context = (context[0][0], context[0][1])
+    #     # print(type(context[0][0]))
+    #     output.append(out[0])
+    #   # print(output[-1].shape)
+    #   output = torch.cat(output[1:], dim=1)
     
     if self.hidden_control is not None:
       h_diff = 0.#self.hidden_loss(output[0][:, :-1, :, :, :], x[:, 1:, :, :, :])
@@ -576,9 +618,10 @@ class WaveLSTMModel(BaseWave):
     else:
       h_diff = 0.
 
-    x = output[0]
+    x = output[0] if forcing else output
 
     # print('here', x.shape)
+    # print(x.shape)
     # print(seq_to_cnn(x).shape)
     x = self.decoder(seq_to_cnn(x))
     #print('feeee', torch.cat([x, out], dim=1).shape)
@@ -588,8 +631,7 @@ class WaveLSTMModel(BaseWave):
     
     #print(x.shape)
     # print(x.shape)
-    x = x.view(shape[0], shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
+    x = x.view(shape[0], solutions.shape[1], x.shape[1], x.shape[2], x.shape[3]).squeeze(2)
     #print(x.shape)
     return x, h_diff, context
-
 

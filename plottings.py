@@ -104,7 +104,35 @@ def plot_valid(X, predictions, X_vp, batch_size, f0_list):
 
   plt.show()
 
+def plot_test(X, predictions, X_vp, batch_size, f0_list, gif=True):
+  for i in range(X.shape[1]):
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+    t_n = i#np.random.randint(low=0, high=X.shape[1] - 1)
+    b_n = 0#np.random.randint(low=0, high=batch_size)
+    # b_n = 0
+    # t_n = -1
+    for c in range(4):
+      if c==0:  
+        im = axs[c].imshow(X[b_n, t_n, :, :], cmap=plt.cm.BuPu)
+        axs[c].set(title='sol '+'t: '+str(t_n)+' b_n: '+str(b_n)+' f0 :'+str(round(f0_list[b_n], 2)))
+        fig.colorbar(im, ax=axs[c])
+      elif c==1:
+        im = axs[c].imshow(predictions[b_n, t_n, :, :].cpu().data.numpy(), cmap=plt.cm.BuPu)
+        axs[c].set(title='pred '+'t: '+str(t_n)+' b_n: '+str(b_n)+' f0 :'+str(round(f0_list[b_n], 2)))
+        fig.colorbar(im, ax=axs[c])
+      elif c==2:
+        im = axs[c].imshow(X_vp[b_n, :, :], cmap=plt.cm.BuPu)
+        axs[c].set(title='vp '+'t: '+str(t_n)+' b_n: '+str(b_n)+' f0 :'+str(round(f0_list[b_n], 2)))
+        fig.colorbar(im, ax=axs[c])
+      elif c==3:
+        im = axs[c].imshow(np.abs(X[b_n, t_n, :, :]-predictions[b_n, t_n, :, :].cpu().data.numpy()), cmap=plt.cm.BuPu)
+        axs[c].set(title='dif '+'t: '+str(t_n)+' b_n: '+str(b_n)+' f0 :'+str(round(f0_list[b_n], 2)))
+        fig.colorbar(im, ax=axs[c])
 
+    if gif==True:
+      plt.savefig('./anim/'+str(t_n)+'.png')
+  plt.show()
+  
 
 def plot_test_video(X_labels, predictions, vp, f0_list):
 
